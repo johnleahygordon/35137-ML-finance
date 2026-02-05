@@ -1,0 +1,2 @@
+strategy,k,alpha,sharpe_raw,sharpe_volscaled
+PCA+Ridge+VolScale,1,0.01,0.2904799368582136,0.2984530692343115

@@ -1,0 +1,49 @@
+# ── HW2 Configuration ──────────────────────────────────────────────────────────
+seed: 42
+
+data:
+  large_path: "data/largeml.pq"
+  small_path: "data/smallml.pq"
+  lsret_path: "data/lsret.csv"
+
+schema:
+  id_col: "permno"
+  date_col: "yyyymm"
+  ret_col: "ret"
+  # All other numeric columns are treated as features
+
+splits:
+  train_years: 20
+  val_years: 12
+  # remainder → test
+
+portfolio:
+  n_quantiles: 10          # decile-based long-short
+  long_quantile: 10        # top decile
+  short_quantile: 1        # bottom decile
+
+ml:
+  rbf_n_components: 100
+  rbf_gamma: 1.0
+  pls_max_components: 20
+
+  # Hyperparameter grids (searched on validation set)
+  lasso_alphas: [1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 0.1, 1.0]
+  ridge_alphas: [1.0e-3, 1.0e-2, 0.1, 1.0, 10.0, 100.0]
+  elasticnet_alphas: [1.0e-4, 1.0e-3, 1.0e-2, 0.1]
+  elasticnet_l1_ratios: [0.25, 0.5, 0.75]
+  pls_components: [2, 5, 10, 15, 20]
+  gbr_n_estimators: [100, 200]
+  gbr_max_depths: [2, 3, 4]
+  gbr_learning_rates: [0.01, 0.05, 0.1]
+
+q2:
+  indicator_cutoff_year: 2004
+  pca_k_range_max: 50
+
+  # Ridge/lasso for indicator prediction
+  ridge_alphas: [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+  lasso_alphas: [1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 0.1, 1.0]
+
+outputs:
+  dir: "outputs"

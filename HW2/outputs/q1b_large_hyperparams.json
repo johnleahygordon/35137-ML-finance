@@ -1,0 +1,34 @@
+{
+  "OLS": {},
+  "Lasso": {
+    "alpha": 0.01
+  },
+  "Ridge": {
+    "alpha": 100.0
+  },
+  "ElasticNet": {
+    "alpha": 0.01,
+    "l1_ratio": 0.75
+  },
+  "RBF+Lasso": {
+    "alpha": 0.001
+  },
+  "RBF+Ridge": {
+    "alpha": 100.0
+  },
+  "RBF+ElasticNet": {
+    "alpha": 0.01,
+    "l1_ratio": 0.25
+  },
+  "PLS_linear": {
+    "n_components": 2
+  },
+  "PLS_RBF": {
+    "n_components": 2
+  },
+  "GBR": {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.01
+  }
+}

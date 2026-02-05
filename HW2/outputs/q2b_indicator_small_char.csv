@@ -1,0 +1,3 @@
+method,sharpe,dataset
+Ridge (alpha=100.0),2.9047640314799894,small_char
+Lasso (alpha=0.1),3.0020460477847983,small_char
