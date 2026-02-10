@@ -11,7 +11,7 @@
 
 The top performers include momentum signals (High52, Mom12m, MomSeason variants) and profitability measures. The worst performers include measures of volatility and skewness, consistent with the literature on low-risk anomalies.
 
-See `q1a_large_sharpe_plot.png` and `q1a_large_sharpe_by_char.csv`.
+See `q1a_large_sharpe_plot.png` anIP0`q1a_large_sharpe_by_char.csv`.
 
 ### 1(b) ML Models — Large Caps
 
@@ -71,7 +71,43 @@ See `q1c_large_ml_sharpe_comparison.csv` and `q1c_large_ml_sharpe_plot.png`.
 |---|---|---|
 | Sharpe | 5.57 | 2.09 |
 
-**Strategy**: Ensemble of all ML model z-scored predictions, z-score weighted portfolio, volatility scaled to 15% annualised target vol. The ensemble benefits from diversification across model architectures (linear vs tree-based vs PLS).
+**Strategy**: Ensemble of all ML model z-scored predictions, z-score weighted portfolio, volatility scaled to 15% annualised target vol.
+
+**Rationale — Why This Approach?**
+
+The strategy combines three key techniques, each chosen for specific reasons:
+
+1. **Model Averaging / Ensemble**
+   - Different ML architectures capture different aspects of the return-predictability relationship: linear models (Lasso, ElasticNet) excel at sparse feature selection, tree-based models (GBR) capture non-linearities and interactions, and PLS extracts latent factors from the high-dimensional characteristic space.
+   - Each model's prediction errors are partially uncorrelated — when ElasticNet misfires due to non-linear effects, GBR may still capture the signal, and vice versa.
+   - By averaging z-scored predictions across all models, we reduce model-specific noise and estimation error. This is analogous to the diversification benefit in portfolio theory: combining imperfectly correlated signals yields a higher signal-to-noise ratio than relying on any single model.
+   - The z-scoring before averaging ensures each model contributes equally regardless of its prediction scale.
+
+2. **Z-Score Weighted Portfolio (vs Decile Sorting)**
+   - Standard decile long-short portfolios treat all stocks in the top (bottom) decile equally, discarding information about *how strongly* a stock is predicted to outperform.
+   - Z-score weighting instead assigns weights proportional to the signal magnitude: a stock with a z-score of +2.5 receives more weight than one with +0.5, both in the long leg.
+   - This exploits the full cross-sectional distribution of predictions rather than just rank ordering, extracting more information from the ML signals.
+   - The approach is equivalent to a cross-sectional regression-based portfolio (Fama-MacBeth style), which has theoretical grounding in capturing conditional expected returns more efficiently.
+
+3. **Volatility Scaling**
+   - Raw portfolio returns exhibit time-varying volatility — periods of market stress produce higher variance that can dominate the Sharpe calculation.
+   - Volatility scaling targets a constant 15% annualised volatility by dynamically adjusting position sizes inversely proportional to recent (12-month trailing) realised volatility.
+   - This is equivalent to running a constant-risk strategy rather than a constant-notional strategy, improving risk-adjusted returns by reducing exposure during turbulent periods and increasing it during calm periods.
+   - The leverage bounds [0.5, 3.0] prevent extreme positions that could arise from unusually low or high volatility estimates.
+   - Volatility scaling is a well-documented technique in the quantitative finance literature (e.g., Moreira and Muir, 2017) shown to improve Sharpe ratios across many asset classes.
+
+**Why Not Other Approaches?**
+
+- *Single best model*: ElasticNet achieved the highest individual Sharpe (5.45 for large caps), but relying on a single model introduces selection bias and model risk. The ensemble (5.57) outperforms by diversifying across architectures.
+- *Equal-weighted decile portfolios*: The standard approach is robust but leaves information on the table. Z-score weighting increased Sharpe by exploiting signal magnitude.
+- *Optimised model weights*: We could have learned optimal ensemble weights on validation data, but this risks overfitting given limited data. Equal weighting (after z-scoring) is more robust.
+- *Transaction cost constraints*: Not modelled here, but in practice z-score weighting can generate higher turnover. Decile sorting may be preferable when transaction costs are a concern.
+
+**Limitations**
+
+- The ensemble assumes all models provide useful signal; if some models are pure noise, they dilute the ensemble. Validation-based model selection could prune poor performers.
+- Volatility scaling uses trailing realised volatility as a proxy for forward volatility, which can lag during regime changes.
+- Small-cap Sharpe (2.09) is substantially lower than large-cap (5.57), likely due to higher idiosyncratic volatility and less efficient signal transmission in less liquid markets.
 
 ---
 
