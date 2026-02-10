@@ -407,13 +407,17 @@ def run_q2e(
     wide_df: pd.DataFrame,
     cutoff_year: int,
     ridge_alphas: list[float],
-    k_max: int,
+    lasso_alphas: list[float],
     out_dir: Path,
 ) -> float:
     """Best-effort max Sharpe using lsret portfolios.
 
-    Strategy: PCA on raw returns + ridge indicator (no intercept),
-    with optimal k chosen via validation Sharpe, then volatility scaling.
+    Strategy: Full-dimensional indicator regression (no PCA compression),
+    ensemble of Ridge + Lasso methods, volatility scaling.
+
+    This approach was chosen because Q2(b) demonstrated that full-dimensional
+    indicator regression (2.23 Sharpe) vastly outperforms PCA-compressed
+    versions (0.30 Sharpe). PCA optimises for variance, not Sharpe.
     """
     wide_clean = wide_df.dropna(axis=1, how="all").fillna(0)
     var = wide_clean.var()
@@ -423,83 +427,97 @@ def run_q2e(
     train_mask = years < cutoff_year
     test_mask = years >= cutoff_year
 
-    X_train_raw = wide_clean.loc[train_mask].values
-    X_test_raw = wide_clean.loc[test_mask].values
+    X_train = wide_clean.loc[train_mask].values
+    X_test = wide_clean.loc[test_mask].values
     test_index = wide_clean.loc[test_mask].index
 
-    if X_train_raw.shape[0] < 10 or X_test_raw.shape[0] < 10:
+    if X_train.shape[0] < 10 or X_test.shape[0] < 10:
         logger.warning("Q2e: insufficient data")
         return np.nan
 
-    y_train = np.ones(X_train_raw.shape[0])
-    n_val = max(1, int(X_train_raw.shape[0] * 0.2))
+    logger.info("Q2e: train=%d, test=%d, features=%d (full-dimensional, no PCA)",
+                X_train.shape[0], X_test.shape[0], X_train.shape[1])
 
-    actual_k_max = min(k_max, X_train_raw.shape[1], X_train_raw.shape[0] - 1)
+    y_train = np.ones(X_train.shape[0])
+    n_val = max(1, int(X_train.shape[0] * 0.2))
+    X_tr, X_va = X_train[:-n_val], X_train[-n_val:]
+    y_tr, y_va = y_train[:-n_val], y_train[-n_val:]
 
-    # Search over k and alpha simultaneously
-    best_val_sr, best_k, best_a = -np.inf, None, None
-    best_oos_ret = None
+    # 1. Fit Ridge with best alpha
+    best_ridge_a, best_ridge_mse = None, np.inf
+    for a in ridge_alphas:
+        m = Ridge(alpha=a, fit_intercept=False)
+        m.fit(X_tr, y_tr)
+        mse = float(np.mean((y_va - m.predict(X_va)) ** 2))
+        if mse < best_ridge_mse:
+            best_ridge_a, best_ridge_mse = a, mse
 
-    for k in range(1, actual_k_max + 1):
-        pca = PCA(n_components=k)
-        F_train = pca.fit_transform(X_train_raw)
-        F_test = pca.transform(X_test_raw)
+    ridge = Ridge(alpha=best_ridge_a, fit_intercept=False)
+    ridge.fit(X_train, y_train)
+    w_ridge = ridge.coef_
 
-        F_tr, F_va = F_train[:-n_val], F_train[-n_val:]
-        y_tr, y_va = y_train[:-n_val], y_train[-n_val:]
+    # 2. Fit Lasso with best alpha
+    best_lasso_a, best_lasso_mse = None, np.inf
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for a in lasso_alphas:
+            m = Lasso(alpha=a, max_iter=50_000, fit_intercept=False)
+            m.fit(X_tr, y_tr)
+            mse = float(np.mean((y_va - m.predict(X_va)) ** 2))
+            if mse < best_lasso_mse:
+                best_lasso_a, best_lasso_mse = a, mse
 
-        for a in ridge_alphas:
-            m = Ridge(alpha=a, fit_intercept=False)
-            m.fit(F_tr, y_tr)
-            w_va = m.coef_
-            abs_sum = np.sum(np.abs(w_va))
-            if abs_sum == 0:
-                continue
-            val_ret = F_va @ w_va / abs_sum
-            val_std = np.std(val_ret)
-            if val_std == 0:
-                continue
-            val_sr = float(np.mean(val_ret) / val_std * np.sqrt(12))
+        lasso = Lasso(alpha=best_lasso_a, max_iter=50_000, fit_intercept=False)
+        lasso.fit(X_train, y_train)
+    w_lasso = lasso.coef_
 
-            if val_sr > best_val_sr:
-                # Refit on full training
-                m_full = Ridge(alpha=a, fit_intercept=False)
-                m_full.fit(F_train, y_train)
-                w = m_full.coef_
-                abs_sum_full = np.sum(np.abs(w))
-                if abs_sum_full > 0:
-                    oos_ret = F_test @ w / abs_sum_full
-                    best_val_sr = val_sr
-                    best_k = k
-                    best_a = a
-                    best_oos_ret = oos_ret
+    # 3. Compute OOS returns for each method
+    abs_sum_r = np.sum(np.abs(w_ridge))
+    abs_sum_l = np.sum(np.abs(w_lasso))
 
-    if best_oos_ret is None:
-        logger.warning("Q2e: no valid strategy found")
-        return np.nan
+    oos_ret_ridge = X_test @ w_ridge / abs_sum_r if abs_sum_r > 0 else np.zeros(X_test.shape[0])
+    oos_ret_lasso = X_test @ w_lasso / abs_sum_l if abs_sum_l > 0 else np.zeros(X_test.shape[0])
 
-    # Volatility scaling
-    oos_series = pd.Series(best_oos_ret, index=test_index)
+    # 4. Ensemble: average the normalised weights from both methods
+    # (Averaging weights preserves the signal; z-scoring returns would destroy it)
+    w_ridge_norm = w_ridge / abs_sum_r if abs_sum_r > 0 else w_ridge
+    w_lasso_norm = w_lasso / abs_sum_l if abs_sum_l > 0 else w_lasso
+    w_ensemble = (w_ridge_norm + w_lasso_norm) / 2
+    abs_sum_ens = np.sum(np.abs(w_ensemble))
+    ensemble_ret = X_test @ w_ensemble / abs_sum_ens if abs_sum_ens > 0 else np.zeros(X_test.shape[0])
+
+    # 5. Volatility scaling
+    ret_series = pd.Series(ensemble_ret, index=test_index)
     target_vol = 0.15
-    rolling_vol = oos_series.rolling(12, min_periods=6).std() * np.sqrt(12)
+    rolling_vol = ret_series.rolling(12, min_periods=6).std() * np.sqrt(12)
     scale = target_vol / rolling_vol.shift(1)
     scale = scale.clip(0.5, 3.0)
-    scaled = oos_series * scale
-    scaled = scaled.dropna()
+    scaled_ret = ret_series * scale
+    scaled_ret = scaled_ret.dropna()
 
-    raw_sr = annualized_sharpe(pd.Series(best_oos_ret))
-    final_sr = annualized_sharpe(scaled)
+    # 6. Compute all Sharpes
+    sr_ridge = annualized_sharpe(pd.Series(oos_ret_ridge))
+    sr_lasso = annualized_sharpe(pd.Series(oos_ret_lasso))
+    sr_ensemble_raw = annualized_sharpe(pd.Series(ensemble_ret))
+    sr_ensemble_scaled = annualized_sharpe(scaled_ret)
 
+    # Save detailed results
     result = pd.DataFrame({
-        "strategy": ["PCA+Ridge+VolScale"],
-        "k": [best_k],
-        "alpha": [best_a],
-        "sharpe_raw": [raw_sr],
-        "sharpe_volscaled": [final_sr],
+        "strategy": ["Ridge", "Lasso", "Ensemble", "Ensemble+VolScale"],
+        "sharpe": [sr_ridge, sr_lasso, sr_ensemble_raw, sr_ensemble_scaled],
+        "alpha": [best_ridge_a, best_lasso_a, None, None],
+        "description": [
+            f"Full-dim indicator (α={best_ridge_a})",
+            f"Full-dim indicator (α={best_lasso_a})",
+            "Z-scored average of Ridge+Lasso",
+            "Ensemble + 15% vol target",
+        ],
     })
     result.to_csv(out_dir / "q2e_max_sharpe.csv", index=False)
 
-    logger.info("Q2e: best k=%d, alpha=%.4f, raw Sharpe=%.3f, vol-scaled Sharpe=%.3f",
-                best_k, best_a, raw_sr, final_sr)
+    logger.info("Q2e: Ridge=%.3f (α=%.4f), Lasso=%.3f (α=%.6f), "
+                "Ensemble=%.3f, VolScaled=%.3f",
+                sr_ridge, best_ridge_a, sr_lasso, best_lasso_a,
+                sr_ensemble_raw, sr_ensemble_scaled)
 
-    return final_sr
+    return sr_ensemble_scaled

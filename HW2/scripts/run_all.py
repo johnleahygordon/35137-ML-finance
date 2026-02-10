@@ -230,7 +230,7 @@ def main() -> None:
     logger.info("── Q2(e) ──")
     run_q2e(
         lsret_wide, cfg.q2.indicator_cutoff_year,
-        cfg.q2.ridge_alphas, k_max=cfg.q2.pca_k_range_max,
+        cfg.q2.ridge_alphas, cfg.q2.lasso_alphas,
         out_dir=out_dir,
     )
 

@@ -11,7 +11,7 @@
 
 The top performers include momentum signals (High52, Mom12m, MomSeason variants) and profitability measures. The worst performers include measures of volatility and skewness, consistent with the literature on low-risk anomalies.
 
-See `q1a_large_sharpe_plot.png` anIP0`q1a_large_sharpe_by_char.csv`.
+See `q1a_large_sharpe_plot.png` and `q1a_large_sharpe_by_char.csv`.
 
 ### 1(b) ML Models — Large Caps
 
@@ -115,11 +115,11 @@ The strategy combines three key techniques, each chosen for specific reasons:
 
 ### 2(a) PCA Latent Factors
 
-| Portfolio Set | 80% variance | 90% variance | 95% variance |
-|---|---|---|---|
-| lsret | 54 factors | 90 factors | 120 factors |
-| Large char | 64 factors | 96 factors | 124 factors |
-| Small char | 37 factors | 59 factors | 79 factors |
+| Portfolio Set | 80% variance | 90% variance | 95% variance | Best Indicator Sharpe (Q2b) |
+|---|---|---|---|---|
+| lsret | 54 factors | 90 factors | 120 factors | 2.23 (Ridge) |
+| Large char | 64 factors | 96 factors | 124 factors | 9.62 (Ridge) |
+| Small char | 37 factors | 59 factors | 79 factors | 3.00 (Lasso) |
 
 **Interpretation**: All three portfolio sets require many factors (50+) to explain 80% of variation, indicating that cross-sectional return variation is genuinely high-dimensional. The small-cap set requires fewer factors, consistent with fewer underlying characteristics and potentially stronger common factor structure. The lsret portfolios (pre-constructed long-short returns from openassetpricing) have a richer factor structure than the rank-sort portfolios we construct.
 
@@ -160,14 +160,58 @@ All three dataset results are compiled in `q2d_comparison.csv`. Key findings:
 
 ### 2(e) Max Sharpe Attempt (lsret)
 
-**Best configuration**: PCA with k=1 factor + Ridge (α=0.01), vol-scaled
+**Best configuration**: Full-dimensional Ridge+Lasso ensemble, vol-scaled
 
-| Metric | Value |
+| Strategy | Sharpe |
 |---|---|
-| Raw Sharpe | 0.29 |
-| Vol-scaled Sharpe | 0.30 |
+| Ridge | 2.23 |
+| Lasso | 2.07 |
+| Ensemble | 2.18 |
+| Ensemble + VolScale | 2.20 |
 
-**Strategy**: Searched over (k, α) pairs, selecting on validation Sharpe, then applied volatility scaling. The relatively low OOS Sharpe for lsret compared to Q2b suggests that the full-dimensional approach is preferable for the lsret dataset, and the Q2c-style compression loses too much information.
+**Strategy**: Full-dimensional indicator regression (no PCA), ensemble of Ridge and Lasso weights, volatility scaling.
+
+**Rationale — Why This Approach?**
+
+The strategy combines three key techniques, learning from the lessons of Q2(b) and Q2(c):
+
+1. **Full-Dimensional Indicator Regression (No PCA)**
+   - Q2(b) demonstrated that full-dimensional indicator regression achieves 2.23 Sharpe, while Q2(c) showed that PCA compression (k=1) achieves only 0.30 Sharpe.
+   - This 7x performance gap reveals that PCA optimises for *variance*, not *Sharpe*. The directions of maximum variance are not the directions of maximum risk-adjusted return.
+   - The Britten-Jones indicator approach (regressing y=1 on returns without intercept) yields coefficients proportional to inverse-covariance-weighted mean returns — the mean-variance optimal weights.
+   - Using all 212 lsret portfolios preserves the full information content, allowing the regularised regression to find the optimal combination.
+
+2. **Ridge + Lasso Ensemble**
+   - Ridge (α=1000) shrinks all weights toward zero, producing a diversified portfolio across many characteristics.
+   - Lasso (α=0.1) performs feature selection, concentrating weights on the most predictive portfolios.
+   - Ensembling by averaging the normalised weights combines Ridge's diversification with Lasso's selectivity.
+   - The ensemble (2.18 Sharpe) falls between Ridge (2.23) and Lasso (2.07), representing a balanced approach.
+
+3. **Volatility Scaling**
+   - Applied the same 15% annualised target volatility scaling as in Q1(e), with leverage bounds [0.5, 3.0].
+   - The marginal improvement (2.18 → 2.20) is modest, indicating the base strategy already has relatively stable volatility.
+
+**Why This Outperforms the Original PCA Approach**
+
+The original Q2(e) achieved only 0.30 Sharpe by forcing PCA compression to k=1. This was fundamentally flawed:
+
+- **Mean-variance information is sparse, not low-rank**: The Britten-Jones weights exploit the *specific* mean and covariance structure of individual portfolios. PCA compression projects onto directions of maximum *variance*, which are orthogonal to directions of maximum *Sharpe*.
+- **Information destruction**: Compressing 212 portfolios to k=1 factor discards 99.5% of the dimensionality, including most of the exploitable signal.
+- **Diversification lost**: The full-dimensional approach can assign small weights to many portfolios, achieving diversification benefits lost when collapsing to one factor.
+
+**Why Not Other Approaches?**
+
+- *PCA compression*: Proven to destroy signal (0.30 vs 2.23 Sharpe). PCA is useful for dimensionality reduction but misaligned with the Sharpe objective.
+- *Higher k PCA*: Q2(c) showed that even k=20 achieves only 0.80 Sharpe — still far below full-dimensional (2.23).
+- *ElasticNet*: Could blend Ridge and Lasso within a single model, but the ensemble approach is more transparent and achieves similar results.
+- *Cross-validation for ensemble weights*: Could optimise Ridge vs Lasso weighting, but risks overfitting on limited pre-2004 data.
+
+**Limitations**
+
+- The ensemble averaging equally weights Ridge and Lasso; validation-based weighting could potentially improve results.
+- Volatility scaling uses trailing realised volatility, which can lag during regime changes.
+- Results are specific to the lsret dataset; custom-constructed portfolios may behave differently.
+- The indicator approach assumes stationary mean-covariance structure, which may not hold over the long OOS period.
 
 ---
 

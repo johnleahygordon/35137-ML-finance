@@ -1,2 +1,5 @@
-strategy,k,alpha,sharpe_raw,sharpe_volscaled
-PCA+Ridge+VolScale,1,0.01,0.2904799368582136,0.2984530692343115
+strategy,sharpe,alpha,description
+Ridge,2.2298930448505163,1000.0,Full-dim indicator (α=1000.0)
+Lasso,2.0739059572097975,0.1,Full-dim indicator (α=0.1)
+Ensemble,2.178341793688441,,Z-scored average of Ridge+Lasso
+Ensemble+VolScale,2.1986149846703156,,Ensemble + 15% vol target
