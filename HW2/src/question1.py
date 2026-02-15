@@ -162,17 +162,42 @@ def run_q1b(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_q1c(
+    df: pd.DataFrame,
     pred_df: pd.DataFrame,
-    char_sharpes: pd.Series,
     schema: dict,
     cfg: Config,
     out_dir: Path,
     prefix: str = "q1c",
 ) -> pd.Series:
-    """Form portfolios from ML predictions and compare Sharpes."""
+    """Form portfolios from ML predictions and compare Sharpes.
+
+    Characteristic Sharpes are recomputed on the test period only so the
+    comparison with ML portfolios covers the same time window.
+    """
     date_col = schema["date"]
     ret_col = schema["ret"]
+    features = schema["features"]
 
+    # ── Recompute characteristic Sharpes on the test period only ──────────
+    test_dates = pred_df[date_col].unique()
+    df_test = df[df[date_col].isin(test_dates)]
+
+    char_sharpes: dict[str, float] = {}
+    for feat in features:
+        if df_test[feat].isna().mean() > 0.80:
+            continue
+        sig = rank_signal_by_month(df_test, feat, date_col=date_col)
+        ls_ret = long_short_portfolio_returns(
+            df_test, sig, ret_col=ret_col, date_col=date_col,
+            n_quantiles=cfg.portfolio.n_quantiles,
+        )
+        if len(ls_ret) < 12:
+            continue
+        char_sharpes[feat] = annualized_sharpe(ls_ret)
+
+    char_sharpe_series = pd.Series(char_sharpes).sort_values(ascending=False)
+
+    # ── ML portfolio Sharpes ─────────────────────────────────────────────
     pred_cols = [c for c in pred_df.columns if c.startswith("pred_")]
     ml_sharpes: dict[str, float] = {}
 
@@ -188,15 +213,14 @@ def run_q1c(
 
     ml_sharpe_series = pd.Series(ml_sharpes).sort_values(ascending=False)
 
-    # Save comparison table
+    # ── Save comparison table ────────────────────────────────────────────
     comparison = pd.DataFrame({
         "model": list(ml_sharpe_series.index),
         "sharpe": list(ml_sharpe_series.values),
         "type": "ML",
     })
-    # Add top/bottom characteristic sharpes for context
-    top_chars = char_sharpes.nlargest(5)
-    bottom_chars = char_sharpes.nsmallest(5)
+    top_chars = char_sharpe_series.nlargest(5)
+    bottom_chars = char_sharpe_series.nsmallest(5)
     char_rows = pd.DataFrame({
         "model": list(top_chars.index) + list(bottom_chars.index),
         "sharpe": list(top_chars.values) + list(bottom_chars.values),
@@ -207,7 +231,7 @@ def run_q1c(
 
     # Plot
     compare_sharpe_bar(
-        char_sharpes, ml_sharpe_series,
+        char_sharpe_series, ml_sharpe_series,
         title=f"{prefix.upper()}: ML vs Characteristic Sharpes",
         save_path=out_dir / f"{prefix}_ml_sharpe_plot.png",
     )
@@ -320,7 +344,7 @@ def run_q1_for_dataset(
     results, pred_df = run_q1b(df, schema, cfg, out_dir, prefix=prefix_b)
 
     # Q1(c)
-    ml_sharpes = run_q1c(pred_df, char_sharpes, schema, cfg, out_dir, prefix=prefix_c)
+    ml_sharpes = run_q1c(df, pred_df, schema, cfg, out_dir, prefix=prefix_c)
 
     # Q1(e)
     max_sr = run_q1e(df, pred_df, schema, cfg, out_dir, prefix=prefix_e)
