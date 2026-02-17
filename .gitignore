@@ -1,2 +1,5 @@
 # macOS
 .DS_Store
+HW3/keys.txt
+HW3/embeddings.py
+HW3/generation.py
