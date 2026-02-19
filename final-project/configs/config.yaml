@@ -1,0 +1,63 @@
+# ── FX @ FOMC Project Configuration ─────────────────────────────────────────
+seed: 42
+timezone: America/New_York   # all timestamps stored as tz-aware ET throughout
+
+paths:
+  data_raw: data-raw
+  data_clean: data-clean
+  outputs: outputs
+
+# Currency pairs (Bloomberg convention: how many units of foreign CCY per 1 USD)
+pairs:
+  - USDEUR
+  - USDJPY
+  - USDGBP
+  - USDCAD
+
+# Map pair → foreign central bank (used for policy spread feature)
+pair_cb_map:
+  USDEUR: ECB
+  USDJPY: BOJ
+  USDGBP: BOE
+  USDCAD: BOC
+
+# Prediction windows (ET times, relative to FOMC announcement)
+windows:
+  statement:
+    start: "14:00"
+    end: "14:30"
+    label: "Statement Reaction"
+  digestion:
+    start: "14:30"
+    end: "16:00"
+    label: "Post-Statement Digestion"
+
+# Pre-announcement window used to build cross-asset features (no leakage)
+pre_window:
+  start: "10:00"
+  end: "13:55"
+
+cv:
+  method: LOO   # Leave-One-Meeting-Out
+  n_splits: 41  # one per FOMC meeting
+
+models:
+  # Regularised linear
+  lasso_alphas:          [1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 0.1, 1.0, 10.0]
+  ridge_alphas:          [1.0e-3, 1.0e-2, 0.1, 1.0, 10.0, 100.0, 1000.0]
+  elasticnet_alphas:     [1.0e-4, 1.0e-3, 1.0e-2, 0.1, 1.0]
+  elasticnet_l1_ratios:  [0.1, 0.25, 0.5, 0.75, 0.9]
+  # Gradient-boosted trees (shallow — small N)
+  gbr_n_estimators:      [50, 100, 200]
+  gbr_max_depths:        [1, 2, 3]
+  gbr_learning_rates:    [0.01, 0.05, 0.1]
+
+text:
+  llm_model: claude-opus-4-6
+  prompt_version: v1
+  # PCA dimensionality range for embeddings
+  embedding_dim_min: 5
+  embedding_dim_max: 20
+
+strategy:
+  transaction_cost_bps: 2

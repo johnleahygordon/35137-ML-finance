@@ -1,0 +1,24 @@
+# ── Core data & computation ─────────────────────────────────────────────────
+pandas>=2.1
+numpy>=1.26
+scipy>=1.11
+pyarrow>=14.0          # parquet I/O
+pytz>=2024.1           # timezone handling (America/New_York)
+
+# ── Machine learning ─────────────────────────────────────────────────────────
+scikit-learn>=1.4
+joblib>=1.3
+
+# ── Visualization ────────────────────────────────────────────────────────────
+matplotlib>=3.8
+seaborn>=0.13
+
+# ── PDF text extraction ──────────────────────────────────────────────────────
+pdfplumber>=0.10
+
+# ── LLM / embeddings ─────────────────────────────────────────────────────────
+anthropic>=0.25        # Claude API — set ANTHROPIC_API_KEY before running
+# sentence-transformers>=2.6  # optional fallback for local embeddings
+
+# ── Config & utilities ───────────────────────────────────────────────────────
+pyyaml>=6.0

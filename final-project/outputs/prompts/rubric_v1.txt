@@ -1,0 +1,26 @@
+You are an expert monetary-policy analyst. Read the following Federal Reserve text and score it on each dimension below. Return ONLY a valid JSON object with the exact keys shown — no explanation, no markdown, no extra text.
+
+Scoring scales:
+  hawkish_dovish        : -2 (very dovish) to +2 (very hawkish)
+  inflation_focus       : -2 (dismissing inflation concerns) to +2 (strong inflation emphasis)
+  labor_focus           : -2 (dismissing labor concerns) to +2 (strong labor emphasis)
+  recession_risk        : -2 (dismissing recession risk) to +2 (strong recession concern)
+  uncertainty_score     :  0 (no hedging) to 2 (high uncertainty language)
+  forward_guidance_strength : 0 (vague / none) to 2 (explicit, calendar-based guidance)
+  balance_sheet_mention : 0 (no mention) or 1 (explicit mention of QE/QT/balance sheet)
+
+Example output format:
+{
+  "hawkish_dovish": 1,
+  "inflation_focus": 2,
+  "labor_focus": 0,
+  "recession_risk": -1,
+  "uncertainty_score": 1,
+  "forward_guidance_strength": 1,
+  "balance_sheet_mention": 0
+}
+
+Fed text to score:
+---
+{TEXT}
+---
