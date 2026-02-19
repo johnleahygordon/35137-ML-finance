@@ -177,9 +177,20 @@ def run_ladder(
 
             # Pooled (all pairs) model
             sub_all = panel[panel["window"] == window].copy()
-            if len(sub_all) >= 10 and feature_cols:
-                result_pooled = lomo_cv(sub_all, model_builder, feature_cols, target_col)
-                metrics_pooled = compute_metrics(result_pooled["actuals"].values, result_pooled["preds"].values)
+            if len(sub_all) >= 10:
+                if not feature_cols:
+                    # Rung 1 baselines: no features — apply model directly to full pooled set
+                    valid = sub_all[target_col].notna()
+                    actuals_all = sub_all.loc[valid, target_col].values
+                    mdl_pool = model_builder()
+                    mdl_pool.fit(np.zeros((len(actuals_all), 1)), actuals_all)
+                    preds_pool = mdl_pool.predict(np.zeros((valid.sum(), 1)))
+                    metrics_pooled = compute_metrics(actuals_all, preds_pool)
+                else:
+                    # Filter to columns that have at least one non-NaN value for this window
+                    avail_cols = [c for c in feature_cols if sub_all[c].notna().any()]
+                    result_pooled = lomo_cv(sub_all, model_builder, avail_cols, target_col)
+                    metrics_pooled = compute_metrics(result_pooled["actuals"].values, result_pooled["preds"].values)
             else:
                 metrics_pooled = {k: np.nan for k in ["mae", "rmse", "dir_acc", "oos_r2", "n"]}
 

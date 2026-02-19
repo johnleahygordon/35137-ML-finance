@@ -50,15 +50,15 @@ def qa_intraday_bars(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
     n_dupes = n_before - len(df)
 
     # 4. Gap detection (flag only — do not drop)
-    def _max_gap_minutes(grp: pd.DataFrame) -> float:
-        ts = grp["timestamp_et"].sort_values()
+    def _max_gap_minutes(ts: pd.Series) -> float:
+        ts = ts.sort_values()
         if len(ts) < 2:
             return 0.0
         diffs = ts.diff().dropna()
         return diffs.max().total_seconds() / 60
 
     gap_report = (
-        df.groupby(["source", "meeting_id"])
+        df.groupby(["source", "meeting_id"])["timestamp_et"]
         .apply(_max_gap_minutes)
         .rename("max_gap_min")
         .reset_index()

@@ -128,6 +128,52 @@ _POLICY_RATE_FILES = {
 }
 
 
+def _read_policy_rate_csv(fpath: pathlib.Path, col: str) -> pd.Series:
+    """Read a single policy rate CSV, handling both Bloomberg and StatsCan formats.
+
+    Bloomberg format (Fed, BOE, BOJ, ECB):
+        Header on row 0: Date, PX_LAST, ...
+        Dates as M/D/YYYY
+
+    Statistics Canada format (BOC):
+        Several metadata rows, then 'Date,V39079' header somewhere mid-file.
+        Dates as YYYY-MM-DD
+    """
+    with open(fpath, encoding="utf-8-sig") as f:
+        first_line = f.readline().strip()
+
+    # Statistics Canada format: first line is descriptive text, not a column header
+    if not first_line.startswith("Date"):
+        # Find the 'Date,...' header row, then read from there
+        rows = []
+        found_header = False
+        with open(fpath, encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not found_header:
+                    if line.startswith("Date,"):
+                        found_header = True
+                    continue
+                # Skip empty lines and summary lines
+                if not line or line.startswith("Summary"):
+                    continue
+                parts = line.split(",")
+                if len(parts) >= 2:
+                    rows.append((parts[0].strip(), parts[1].strip()))
+        tmp = pd.DataFrame(rows, columns=["date", col])
+        tmp["date"] = pd.to_datetime(tmp["date"], format="%Y-%m-%d", errors="coerce")
+    else:
+        # Bloomberg format: standard CSV, duplicate column names possible
+        tmp = pd.read_csv(fpath, encoding="utf-8-sig", header=0)
+        tmp = tmp.iloc[:, [0, 1]].copy()
+        tmp.columns = ["date", col]
+        tmp["date"] = pd.to_datetime(tmp["date"], format="%m/%d/%Y", errors="coerce")
+
+    tmp = tmp.dropna(subset=["date"])
+    tmp[col] = pd.to_numeric(tmp[col], errors="coerce")
+    return tmp.set_index("date")[col].sort_index()
+
+
 def load_policy_rates(root: pathlib.Path) -> pd.DataFrame:
     """Load all central bank policy rate CSVs and merge into a single daily DataFrame.
 
@@ -141,13 +187,7 @@ def load_policy_rates(root: pathlib.Path) -> pd.DataFrame:
     series: dict[str, pd.Series] = {}
     for fname, col in _POLICY_RATE_FILES.items():
         fpath = rate_dir / fname
-        # The CSV has duplicate column names; read by position (cols 0=Date, 1=PX_LAST)
-        tmp = pd.read_csv(fpath, encoding="utf-8-sig", usecols=[0, 1], header=0)
-        tmp.columns = ["date", col]
-        tmp["date"] = pd.to_datetime(tmp["date"], format="%m/%d/%Y", errors="coerce")
-        tmp = tmp.dropna(subset=["date"])
-        tmp[col] = pd.to_numeric(tmp[col], errors="coerce")
-        tmp = tmp.set_index("date")[col].sort_index()
+        tmp = _read_policy_rate_csv(fpath, col)
         series[col] = tmp
         logger.debug("  %s: %d observations", col, len(tmp))
 

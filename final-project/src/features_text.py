@@ -319,15 +319,39 @@ def make_embeddings(
     Returns DataFrame with columns:
         meeting_id, text_source, emb_pc_1, emb_pc_2, ..., emb_pc_N
     """
+    # Use transformers directly to avoid sentence-transformers' dependency on
+    # `datasets` (which requires _lzma, a C extension often missing in pyenv builds).
     try:
-        from sentence_transformers import SentenceTransformer
+        import torch
+        from transformers import AutoTokenizer, AutoModel
     except ImportError as e:
         raise ImportError(
-            "sentence-transformers required: pip install sentence-transformers"
+            "transformers and torch required: pip install transformers torch"
         ) from e
 
-    logger.info("Loading embedding model: %s", model_name)
-    st_model = SentenceTransformer(model_name)
+    hf_model_name = f"sentence-transformers/{model_name}"
+    logger.info("Loading embedding model: %s", hf_model_name)
+    tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
+    embed_model = AutoModel.from_pretrained(hf_model_name)
+    embed_model.eval()
+
+    def _mean_pool(model_output, attention_mask):
+        token_emb = model_output.last_hidden_state
+        mask_exp = attention_mask.unsqueeze(-1).expand(token_emb.size()).float()
+        return torch.sum(token_emb * mask_exp, 1) / torch.clamp(mask_exp.sum(1), min=1e-9)
+
+    def _encode_texts(texts: list[str], batch_size: int = 16) -> "np.ndarray":
+        all_emb = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            encoded = tokenizer(batch, padding=True, truncation=True,
+                                max_length=512, return_tensors="pt")
+            with torch.no_grad():
+                output = embed_model(**encoded)
+            emb = _mean_pool(output, encoded["attention_mask"])
+            emb = torch.nn.functional.normalize(emb, p=2, dim=1)
+            all_emb.append(emb.numpy())
+        return np.vstack(all_emb)
 
     all_rows: list[dict] = []
 
@@ -341,7 +365,7 @@ def make_embeddings(
             ids_in_order.append(mid)
 
         logger.info("Encoding %d %s texts ...", len(texts_in_order), text_source)
-        embeddings = st_model.encode(texts_in_order, show_progress_bar=False, batch_size=16)
+        embeddings = _encode_texts(texts_in_order)
         # embeddings shape: (n_meetings, embedding_dim)
 
         # Standardise before PCA
