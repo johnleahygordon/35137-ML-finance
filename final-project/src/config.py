@@ -58,7 +58,7 @@ class ModelsCfg:
 
 @dataclass
 class TextCfg:
-    llm_model: str = "claude-opus-4-6"
+    llm_model: str = "claude-sonnet-4-6"
     prompt_version: str = "v1"
     embedding_dim_min: int = 5
     embedding_dim_max: int = 20
@@ -134,7 +134,7 @@ def load_config(path: str | pathlib.Path = "configs/config.yaml") -> Config:
             gbr_learning_rates=m.get("gbr_learning_rates", []),
         ),
         text=TextCfg(
-            llm_model=t.get("llm_model", "claude-opus-4-6"),
+            llm_model=t.get("llm_model", "claude-sonnet-4-6"),
             prompt_version=t.get("prompt_version", "v1"),
             embedding_dim_min=t.get("embedding_dim_min", 5),
             embedding_dim_max=t.get("embedding_dim_max", 20),

@@ -200,7 +200,7 @@ where `close_entry` is the last 5-minute bar close at or before the window start
 
 **Rung 4 — Text signals:**
 - Keyword hawkish/dovish net score (deterministic)
-- LLM rubric: 7 dimensions scored by `claude-opus-4-6` using `outputs/prompts/rubric_v1.txt`
+- LLM rubric: 7 dimensions scored by `claude-sonnet-4-6` using `outputs/prompts/rubric_v1.txt`
 - Sentence embeddings (all-MiniLM-L6-v2) + PCA reduction to 5–20 components
 
 ### Evaluation
