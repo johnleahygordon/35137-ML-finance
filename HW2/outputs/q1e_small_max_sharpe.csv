@@ -1,2 +1,2 @@
 strategy,sharpe,description
-Ensemble + VolScaling,2.0920475294062,"Average z-scored predictions across all ML models, z-score weighted portfolio, volatility scaled to 15% annualized"
+Ensemble + VolScaling,2.070735480011455,"Average z-scored predictions across all ML models, z-score weighted portfolio, volatility scaled to 15% annualized"

@@ -1,3 +1,3 @@
 method,sharpe,dataset
-Ridge (alpha=1000.0),2.2298930448505163,lsret
+Ridge (alpha=1000.0),2.229893044850528,lsret
 Lasso (alpha=0.1),2.0739059572097975,lsret
